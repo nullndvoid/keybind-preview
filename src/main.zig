@@ -9,7 +9,7 @@ pub const Collector = struct {
     arena: Arena,
     /// If no binds are found, perhaps we just print nothing.
     /// TODO: Implement format function.
-    binds: ?[]Bind,
+    binds: ?[]Bind = null,
 
     const Self = @This();
 
@@ -65,13 +65,7 @@ pub const Collector = struct {
             Mod5: bool = false,
             _: bool = false,
 
-            const super = (Mods{ .Super = true }).int();
-            const alt = (Mods{ .Alt = true }).int();
-            const shift = (Mods{ .Shift = true }).int();
-            const ctrl = (Mods{ .Ctrl = true }).int();
             const none = (Mods{ .None = true }).int();
-            const mod3 = (Mods{ .Mod3 = true }).int();
-            const mod5 = (Mods{ .Mod5 = true }).int();
 
             fn int(self: Mods) u8 {
                 return @bitCast(self);
@@ -85,20 +79,63 @@ pub const Collector = struct {
             }
 
             pub fn fromString(s: []const u8) !Mods {
-                var mods: Mods = Mods{};
+                var mods: Mods = .{};
                 var got_mods = false;
 
-                var split = std.mem.splitAny(u8, s, "+ ");
-                while (split.next()) |word| {
-                    if (std.mem.eql(u8, word, "+")) continue;
+                var split = std.mem.tokenizeScalar(u8, s, '+');
+                while (split.next()) |raw_word| {
+                    const word = std.mem.trim(u8, raw_word, " ");
+                    if (word.len == 0) continue;
 
-                    if (std.mem.eql(u8, word, "Super")) {
-                        got_mods = true;
-                        mods = @bitCast(mods.int() | super);
+                    if (std.mem.eql(u8, word, "Super") or std.mem.eql(u8, word, "Mod4")) {
+                        mods.Super = true;
+                    } else if (std.mem.eql(u8, word, "Alt") or std.mem.eql(u8, word, "Mod1")) {
+                        mods.Alt = true;
+                    } else if (std.mem.eql(u8, word, "Shift")) {
+                        mods.Shift = true;
+                    } else if (std.mem.eql(u8, word, "Control") or std.mem.eql(u8, word, "Ctrl")) {
+                        mods.Ctrl = true;
+                    } else if (std.mem.eql(u8, word, "None")) {
+                        mods.None = true;
+                    } else if (std.mem.eql(u8, word, "Mod3")) {
+                        mods.Mod3 = true;
+                    } else if (std.mem.eql(u8, word, "Mod5")) {
+                        mods.Mod5 = true;
+                    } else {
+                        return error.InvalidBind;
                     }
+                    got_mods = true;
                 }
 
-                if (!got_mods) return error.InvalidBind;
+                if (!mods.validate() or !got_mods) return error.InvalidBind;
+
+                return mods;
+            }
+
+            test "modifier string parsing" {
+                const results = [_]struct { input: []const u8, output: Mods }{
+                    .{ .input = "Super", .output = Mods{ .Super = true } },
+                    .{ .input = "Mod4", .output = Mods{ .Super = true } },
+                    .{ .input = "Alt", .output = Mods{ .Alt = true } },
+                    .{ .input = "Mod1", .output = Mods{ .Alt = true } },
+                    .{ .input = "Shift", .output = Mods{ .Shift = true } },
+                    .{ .input = "Control", .output = Mods{ .Ctrl = true } },
+                    .{ .input = "Ctrl", .output = Mods{ .Ctrl = true } },
+                    .{ .input = "None", .output = Mods{ .None = true } },
+                    .{ .input = "Mod3", .output = Mods{ .Mod3 = true } },
+                    .{ .input = "Mod5", .output = Mods{ .Mod5 = true } },
+                    .{ .input = "Super+Shift", .output = Mods{ .Super = true, .Shift = true } },
+                    .{ .input = "Super+Alt+Control", .output = Mods{ .Super = true, .Alt = true, .Ctrl = true } },
+                    .{ .input = "Super + Shift", .output = Mods{ .Super = true, .Shift = true } },
+                };
+
+                for (results) |res| {
+                    try std.testing.expectEqual(res.output, try Mods.fromString(res.input));
+                }
+
+                try std.testing.expectError(error.InvalidBind, Mods.fromString("Invalid"));
+                try std.testing.expectError(error.InvalidBind, Mods.fromString("Super+None"));
+                try std.testing.expectError(error.InvalidBind, Mods.fromString("Super Shift"));
             }
         };
     };
@@ -116,10 +153,15 @@ pub const Collector = struct {
         var split = std.mem.splitAny(u8, line[starting_command.len - 1 ..], " ");
         _ = split.next();
 
-        const mod = split.next() catch return error.InvalidBind;
+        // const mod = split.next() catch return error.InvalidBind;
     }
 
     pub fn deinit(self: Collector) void {
         self.file.close();
+        self.arena.deinit();
     }
 };
+
+test {
+    std.testing.refAllDeclsRecursive(@This());
+}
