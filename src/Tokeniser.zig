@@ -5,7 +5,7 @@ index: usize = 0,
 
 const Tokeniser = @This();
 
-const Token = struct {
+pub const Token = struct {
     tt: TokenType = undefined,
     span: Span = undefined,
 
@@ -57,88 +57,96 @@ pub fn next(self: *Tokeniser) Token {
         },
     };
 
-    state: switch (State.start) {
-        .start => switch (self.buffer[self.index]) {
-            0 => {
-                if (self.index == self.buffer.len) {
-                    return .{
-                        .tt = .eof,
-                        .span = .{
-                            .from = self.index,
-                            .to = self.index,
-                        },
-                    };
-                } else {
-                    continue :state .invalid;
-                }
-            },
-            else => {
-                res.tt = .wildcard;
-                continue :state .wildcard;
-            },
-            ' ', '\t' => {
-                self.index += 1;
-                res.span.from = self.index;
-
-                continue :state .start;
-            },
-            '"', '\'' => {
-                continue :state .string_open;
-            },
-            '+' => {
-                self.index += 1;
-                res.tt = .plus;
-            },
-        },
-        .invalid => {
-            self.index += 1;
-            switch (self.buffer[self.index]) {
-                0 => if (self.index == self.buffer.len) {
-                    res.tt = .invalid;
-                } else {
-                    continue :state .invalid;
+    var state = State.start;
+    while (true) {
+        if (self.index >= self.buffer.len) {
+            switch (state) {
+                .wildcard => {
+                    res.span.to = self.index - 1;
+                    const text = self.buffer[res.span.from..self.index];
+                    if (Token.getModifier(text)) |tt| {
+                        res.tt = tt;
+                    } else {
+                        res.tt = .wildcard;
+                    }
+                    return res;
                 },
-                else => continue :state .invalid,
-            }
-        },
-        .string_open => {
-            // Scan forward until we hit terminating quote.
-            // Delimiter will be stored in res.span.from.
-            self.index += 1;
-
-            if (self.buffer[self.index] == self.buffer[res.span.from]) {
-                res.tt = .string;
-                self.index += 1;
-            } else if (self.buffer[self.index] == 0) {
-                res.tt = .invalid;
-                continue :state .invalid;
-            }
-
-            continue :state .string_open;
-        },
-        .wildcard => {
-            self.index += 1;
-
-            switch (self.buffer[self.index]) {
-                ' ', '+' => {
-                    self.index += 1;
+                .string_open => {
+                    res.tt = .invalid;
+                    res.span.to = self.index;
+                    return res;
                 },
                 else => {
-                    continue :state .wildcard;
+                    res.tt = .eof;
+                    res.span.from = self.index;
+                    res.span.to = self.index;
+                    return res;
                 },
             }
+        }
 
-            const text = self.buffer[res.span.from..self.index];
-
-            if (Token.getModifier(text)) |tt| {
-                res.tt = tt;
-            }
-        },
+        const c = self.buffer[self.index];
+        switch (state) {
+            .start => switch (c) {
+                ' ', '\t' => {
+                    self.index += 1;
+                    res.span.from = self.index;
+                    continue;
+                },
+                '"', '\'' => {
+                    state = .string_open;
+                    self.index += 1;
+                    res.span.from = self.index;
+                    continue;
+                },
+                '+' => {
+                    res.tt = .plus;
+                    res.span.to = self.index;
+                    self.index += 1;
+                    return res;
+                },
+                else => {
+                    state = .wildcard;
+                    continue;
+                },
+            },
+            .string_open => {
+                const quote = self.buffer[res.span.from - 1];
+                if (c == quote) {
+                    res.tt = .string;
+                    res.span.to = self.index - 1;
+                    self.index += 1;
+                    return res;
+                }
+                self.index += 1;
+                continue;
+            },
+            .wildcard => {
+                switch (c) {
+                    ' ', '\t', '+', '"', '\'' => {
+                        res.span.to = self.index - 1;
+                        const text = self.buffer[res.span.from..self.index];
+                        if (Token.getModifier(text)) |tt| {
+                            res.tt = tt;
+                        } else {
+                            res.tt = .wildcard;
+                        }
+                        return res;
+                    },
+                    else => {
+                        self.index += 1;
+                        continue;
+                    },
+                }
+            },
+            .invalid => {
+                res.tt = .invalid;
+                res.span.to = self.index;
+                self.index += 1;
+                return res;
+            },
+        }
     }
-
-    res.span.to = self.index;
-
-    return res;
 }
 
 pub fn init(buffer: []const u8) Tokeniser {
@@ -146,20 +154,32 @@ pub fn init(buffer: []const u8) Tokeniser {
 }
 
 test "tokenise inputs" {
-    const data = [_]struct { input: []const u8, output: []Token }{
+    const data = [_]struct { input: []const u8, output: []const Token }{
         .{
             .input = "normal Super+Shift spawn \"/bin/bash\"",
             .output = &.{
                 .{ .tt = .wildcard, .span = .{ .from = 0, .to = 5 } },
                 .{ .tt = .super, .span = .{ .from = 7, .to = 11 } },
                 .{ .tt = .plus, .span = .{ .from = 12, .to = 12 } },
+                .{ .tt = .shift, .span = .{ .from = 13, .to = 17 } },
+                .{ .tt = .wildcard, .span = .{ .from = 19, .to = 23 } },
+                .{ .tt = .string, .span = .{ .from = 26, .to = 34 } },
+                .{ .tt = .eof, .span = .{ .from = 36, .to = 36 } },
             },
         },
     };
-    const tokeniser = Tokeniser.init(undefined);
 
     for (data) |d| {
-        tokeniser.buffer = d.input;
-        tokeniser.index = 0;
+        var tokeniser = Tokeniser.init(d.input);
+        for (d.output) |expected| {
+            const actual = tokeniser.next();
+            try std.testing.expectEqual(expected.tt, actual.tt);
+            try std.testing.expectEqual(expected.span.from, actual.span.from);
+            try std.testing.expectEqual(expected.span.to, actual.span.to);
+        }
     }
+}
+
+test {
+    std.testing.refAllDeclsRecursive(Tokeniser);
 }

@@ -2,6 +2,8 @@ const std = @import("std");
 const File = std.fs.File;
 const Arena = std.heap.ArenaAllocator;
 
+pub const Tokeniser = @import("Tokeniser.zig");
+
 pub fn main() !void {}
 
 pub const Collector = struct {
