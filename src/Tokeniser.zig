@@ -28,6 +28,7 @@ pub const Token = struct {
         none,
         mod3,
         mod5,
+        description,
         invalid,
         eof,
     };
@@ -45,7 +46,7 @@ pub const Token = struct {
     }
 };
 
-const State = enum { start, invalid, string_open, wildcard };
+const State = enum { start, invalid, string_open, wildcard, description };
 
 /// We assume the input to be a line which began with riverctl map. This
 /// start has been stripped off, as well as the terminating newline.
@@ -69,6 +70,16 @@ pub fn next(self: *Tokeniser) Token {
                     } else {
                         res.tt = .wildcard;
                     }
+                    return res;
+                },
+                .description => {
+                    if (res.span.from >= self.index) {
+                        res.tt = .eof;
+                        res.span.to = self.index;
+                        return res;
+                    }
+                    res.tt = .description;
+                    res.span.to = self.index - 1;
                     return res;
                 },
                 .string_open => {
@@ -105,6 +116,20 @@ pub fn next(self: *Tokeniser) Token {
                     self.index += 1;
                     return res;
                 },
+                '#' => {
+                    if (self.index + 1 < self.buffer.len and self.buffer[self.index + 1] == '#') {
+                        self.index += 2;
+                        while (self.index < self.buffer.len and (self.buffer[self.index] == ' ' or self.buffer[self.index] == '\t')) {
+                            self.index += 1;
+                        }
+                        res.span.from = self.index;
+                        state = .description;
+                        continue;
+                    } else {
+                        state = .wildcard;
+                        continue;
+                    }
+                },
                 else => {
                     state = .wildcard;
                     continue;
@@ -139,6 +164,10 @@ pub fn next(self: *Tokeniser) Token {
                     },
                 }
             },
+            .description => {
+                self.index += 1;
+                continue;
+            },
             .invalid => {
                 res.tt = .invalid;
                 res.span.to = self.index;
@@ -165,6 +194,38 @@ test "tokenise inputs" {
                 .{ .tt = .wildcard, .span = .{ .from = 19, .to = 23 } },
                 .{ .tt = .string, .span = .{ .from = 26, .to = 34 } },
                 .{ .tt = .eof, .span = .{ .from = 36, .to = 36 } },
+            },
+        },
+        .{
+            .input = "normal Super+Shift spawn \"/bin/bash\" ## Open a terminal",
+            .output = &.{
+                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 5 } },
+                .{ .tt = .super, .span = .{ .from = 7, .to = 11 } },
+                .{ .tt = .plus, .span = .{ .from = 12, .to = 12 } },
+                .{ .tt = .shift, .span = .{ .from = 13, .to = 17 } },
+                .{ .tt = .wildcard, .span = .{ .from = 19, .to = 23 } },
+                .{ .tt = .string, .span = .{ .from = 26, .to = 34 } },
+                .{ .tt = .description, .span = .{ .from = 40, .to = 54 } },
+                .{ .tt = .eof, .span = .{ .from = 55, .to = 55 } },
+            },
+        },
+        .{
+            .input = "normal None Return ## Toggle fullscreen",
+            .output = &.{
+                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 5 } },
+                .{ .tt = .none, .span = .{ .from = 7, .to = 10 } },
+                .{ .tt = .wildcard, .span = .{ .from = 12, .to = 17 } },
+                .{ .tt = .description, .span = .{ .from = 22, .to = 38 } },
+                .{ .tt = .eof, .span = .{ .from = 39, .to = 39 } },
+            },
+        },
+        .{
+            .input = "normal None Return ##",
+            .output = &.{
+                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 5 } },
+                .{ .tt = .none, .span = .{ .from = 7, .to = 10 } },
+                .{ .tt = .wildcard, .span = .{ .from = 12, .to = 17 } },
+                .{ .tt = .eof, .span = .{ .from = 21, .to = 21 } },
             },
         },
     };
