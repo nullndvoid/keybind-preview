@@ -114,7 +114,6 @@ const BindBuilder = struct {
         if (self.mods.Ctrl) try parts.append(alloc, "Ctrl");
         if (self.mods.Alt) try parts.append(alloc, "Alt");
         if (self.mods.Shift) try parts.append(alloc, "Shift");
-        if (self.mods.None) try parts.append(alloc, "None");
         if (self.mods.Mod3) try parts.append(alloc, "Mod3");
         if (self.mods.Mod5) try parts.append(alloc, "Mod5");
 
@@ -169,19 +168,28 @@ const Bind = struct {
         }
     };
 
-    pub inline fn format(self: *Bind, writer: *Writer) Writer.Error!void {
+    pub inline fn format(self: *const Bind, writer: *Writer) Writer.Error!void {
         try writer.print("{s}", .{self.fmt});
     }
 };
 
 /// Warnings can be emitted if a line is not documented with #/##.
 fn parseLine(self: *Collector, line: []const u8) !?Bind {
-    const starting_command = "riverctl map";
-    if (!std.mem.startsWith(u8, line, starting_command)) {
-        return null;
+    // Support both "riverctl map" and "riverctl map-pointer"
+    const prefixes = [_][]const u8{ "riverctl map-pointer", "riverctl map" };
+
+    var trimmed_line: []const u8 = undefined;
+    var found = false;
+    for (prefixes) |prefix| {
+        if (std.mem.startsWith(u8, line, prefix)) {
+            trimmed_line = line[prefix.len..];
+            found = true;
+            break;
+        }
     }
 
-    var trimmed_line = std.mem.trim(u8, line, starting_command);
+    if (!found) return null;
+
     trimmed_line = std.mem.trimEnd(u8, trimmed_line, " \n\r");
 
     var tokeniser = Tokeniser.init(trimmed_line);
@@ -290,4 +298,44 @@ test "parseLine" {
         .Alt = true,
     }, l.mods);
     try std.testing.expectEqualStrings("Super+Ctrl+Alt+E (A description.)", l.fmt);
+}
+
+test "parseLine with Control modifier" {
+    const line = "riverctl map normal Super+Alt+Control H snap left ## Snap window left";
+
+    var arena = Arena.init(std.testing.allocator);
+    var collector = Collector{
+        .arena = &arena,
+    };
+    defer collector.deinit();
+
+    const l = (try collector.parseLine(line)).?;
+
+    try std.testing.expectEqualStrings("H", l.key);
+    try std.testing.expectEqualStrings("snapleft", l.command);
+    try std.testing.expectEqualStrings("Snap window left", l.description.?);
+    try std.testing.expectEqual(Bind.Mods{
+        .Super = true,
+        .Ctrl = true,
+        .Alt = true,
+    }, l.mods);
+}
+
+test "parseLine with map-pointer" {
+    const line = "riverctl map-pointer normal Super BTN_LEFT move-view ## Move view (pointer)";
+
+    var arena = Arena.init(std.testing.allocator);
+    var collector = Collector{
+        .arena = &arena,
+    };
+    defer collector.deinit();
+
+    const l = (try collector.parseLine(line)).?;
+
+    try std.testing.expectEqualStrings("BTN_LEFT", l.key);
+    try std.testing.expectEqualStrings("move-view", l.command);
+    try std.testing.expectEqualStrings("Move view (pointer)", l.description.?);
+    try std.testing.expectEqual(Bind.Mods{
+        .Super = true,
+    }, l.mods);
 }
