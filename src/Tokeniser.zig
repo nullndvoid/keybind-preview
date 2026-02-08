@@ -79,7 +79,7 @@ pub fn next(self: *Tokeniser) Token {
         if (self.index >= self.buffer.len) {
             switch (state) {
                 .wildcard => {
-                    res.span.to = self.index - 1;
+                    res.span.to = self.index;
                     const text = self.buffer[res.span.from..self.index];
                     if (Token.getModifier(text)) |tt| {
                         res.tt = tt;
@@ -95,7 +95,7 @@ pub fn next(self: *Tokeniser) Token {
                         return res;
                     }
                     res.tt = .description;
-                    res.span.to = self.index - 1;
+                    res.span.to = self.index;
                     return res;
                 },
                 .string_open => {
@@ -157,7 +157,7 @@ pub fn next(self: *Tokeniser) Token {
                 const quote = self.buffer[res.span.from - 1];
                 if (c == quote) {
                     res.tt = .string;
-                    res.span.to = self.index - 1;
+                    res.span.to = self.index;
                     self.index += 1;
                     return res;
                 }
@@ -167,7 +167,7 @@ pub fn next(self: *Tokeniser) Token {
             .wildcard => {
                 switch (c) {
                     ' ', '\t', '+', '"', '\'' => {
-                        res.span.to = self.index - 1;
+                        res.span.to = self.index;
                         const text = self.buffer[res.span.from..self.index];
                         if (Token.getModifier(text)) |tt| {
                             res.tt = tt;
@@ -220,44 +220,44 @@ test "tokenise inputs" {
         .{
             .input = "normal Super+Shift spawn \"/bin/bash\"",
             .output = &.{
-                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 5 } },
-                .{ .tt = .super, .span = .{ .from = 7, .to = 11 } },
+                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 6 } },
+                .{ .tt = .super, .span = .{ .from = 7, .to = 12 } },
                 .{ .tt = .plus, .span = .{ .from = 12, .to = 12 } },
-                .{ .tt = .shift, .span = .{ .from = 13, .to = 17 } },
-                .{ .tt = .wildcard, .span = .{ .from = 19, .to = 23 } },
-                .{ .tt = .string, .span = .{ .from = 26, .to = 34 } },
+                .{ .tt = .shift, .span = .{ .from = 13, .to = 18 } },
+                .{ .tt = .wildcard, .span = .{ .from = 19, .to = 24 } },
+                .{ .tt = .string, .span = .{ .from = 26, .to = 35 } },
                 .{ .tt = .eof, .span = .{ .from = 36, .to = 36 } },
             },
         },
         .{
             .input = "normal Super+Shift spawn \"/bin/bash\" ## Open a terminal",
             .output = &.{
-                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 5 } },
-                .{ .tt = .super, .span = .{ .from = 7, .to = 11 } },
+                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 6 } },
+                .{ .tt = .super, .span = .{ .from = 7, .to = 12 } },
                 .{ .tt = .plus, .span = .{ .from = 12, .to = 12 } },
-                .{ .tt = .shift, .span = .{ .from = 13, .to = 17 } },
-                .{ .tt = .wildcard, .span = .{ .from = 19, .to = 23 } },
-                .{ .tt = .string, .span = .{ .from = 26, .to = 34 } },
-                .{ .tt = .description, .span = .{ .from = 40, .to = 54 } },
+                .{ .tt = .shift, .span = .{ .from = 13, .to = 18 } },
+                .{ .tt = .wildcard, .span = .{ .from = 19, .to = 24 } },
+                .{ .tt = .string, .span = .{ .from = 26, .to = 35 } },
+                .{ .tt = .description, .span = .{ .from = 40, .to = 55 } },
                 .{ .tt = .eof, .span = .{ .from = 55, .to = 55 } },
             },
         },
         .{
             .input = "normal None Return ## Toggle fullscreen",
             .output = &.{
-                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 5 } },
-                .{ .tt = .none, .span = .{ .from = 7, .to = 10 } },
-                .{ .tt = .wildcard, .span = .{ .from = 12, .to = 17 } },
-                .{ .tt = .description, .span = .{ .from = 22, .to = 38 } },
+                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 6 } },
+                .{ .tt = .none, .span = .{ .from = 7, .to = 11 } },
+                .{ .tt = .wildcard, .span = .{ .from = 12, .to = 18 } },
+                .{ .tt = .description, .span = .{ .from = 22, .to = 39 } },
                 .{ .tt = .eof, .span = .{ .from = 39, .to = 39 } },
             },
         },
         .{
             .input = "normal None Return ##",
             .output = &.{
-                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 5 } },
-                .{ .tt = .none, .span = .{ .from = 7, .to = 10 } },
-                .{ .tt = .wildcard, .span = .{ .from = 12, .to = 17 } },
+                .{ .tt = .wildcard, .span = .{ .from = 0, .to = 6 } },
+                .{ .tt = .none, .span = .{ .from = 7, .to = 11 } },
+                .{ .tt = .wildcard, .span = .{ .from = 12, .to = 18 } },
                 .{ .tt = .eof, .span = .{ .from = 21, .to = 21 } },
             },
         },
