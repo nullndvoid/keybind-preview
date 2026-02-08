@@ -38,7 +38,8 @@ pub const Token = struct {
         if (std.mem.eql(u8, s, "Super")) return .super;
         if (std.mem.eql(u8, s, "Alt")) return .alt;
         if (std.mem.eql(u8, s, "Shift")) return .shift;
-        if (std.mem.eql(u8, s, "Ctrl")) return .ctrl;
+        if (std.mem.eql(u8, s, "Ctrl") or std.mem.eql(u8, s, "Control"))
+            return .ctrl;
         if (std.mem.eql(u8, s, "None")) return .none;
         if (std.mem.eql(u8, s, "Mod3")) return .mod3;
         if (std.mem.eql(u8, s, "Mod5")) return .mod5;
