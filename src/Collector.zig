@@ -7,8 +7,7 @@ const Writer = std.Io.Writer;
 const Collector = @This();
 const Tokeniser = @import("Tokeniser.zig");
 
-file: File,
-arena: Arena,
+arena: *Arena,
 /// If no binds are found, perhaps we just print nothing.
 /// TODO: Implement format function.
 binds: ?[]Bind = null,
@@ -17,23 +16,41 @@ const Self = @This();
 
 pub const CollectionError = error{ NotAFile, NoBinds, InvalidBind } || File.OpenError || Allocator.Error;
 
-pub fn init(path: []const u8, arena: Arena) CollectionError!Self {
+pub fn init(path: []const u8, arena: *Arena) CollectionError!Self {
     const cwd = std.fs.cwd();
 
     const file = try cwd.openFile(path, .{ .mode = .read_only });
-    const stat = try file.stat();
+    defer file.close();
 
+    const stat = try file.stat();
     if (stat.kind != .file) {
         return error.NotAFile;
     }
 
-    // TODO: Parse everything on init and let caller clean everything up later.
-    //       Single function that can fail might be cleaner.
+    // Lines aren't likely to exceed 512 bytes but this could fail (StreamTooLong),
+    // perhaps use the Arena?
+    var reader_buf: [512]u8 = undefined;
+    var rdr = file.reader(&reader_buf);
 
-    return Self{
-        .file = file,
-        .arena = arena,
-    };
+    var binds = std.ArrayList(Bind).empty;
+    defer binds.deinit(arena.allocator());
+
+    var collector = Self{ .arena = arena, .binds = null };
+
+    while (true) {
+        const line = rdr.interface.takeDelimiterInclusive('\n') catch break;
+        const bind = collector.parseLine(line) catch |e| {
+            std.log.err("{any} \"{s}\"", .{ e, line });
+            continue;
+        } orelse continue;
+
+        try binds.append(arena.allocator(), bind);
+    }
+
+    if (binds.items.len > 0)
+        collector.binds = try binds.toOwnedSlice(arena.allocator());
+
+    return collector;
 }
 
 const BindBuilder = struct {
@@ -250,19 +267,15 @@ fn parseLine(self: *Collector, line: []const u8) !?Bind {
 }
 
 pub fn deinit(self: Collector) void {
-    if (!@import("builtin").is_test)
-        self.file.close();
     self.arena.deinit();
 }
 
 test "parseLine" {
     const line = "riverctl map normal Super+Ctrl+Alt E exit ## A description.";
 
-    const arena = Arena.init(std.testing.allocator);
-
+    var arena = Arena.init(std.testing.allocator);
     var collector = Collector{
-        .arena = arena,
-        .file = undefined,
+        .arena = &arena,
     };
     defer collector.deinit();
 
