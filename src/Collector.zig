@@ -94,9 +94,9 @@ const BindBuilder = struct {
         defer parts.deinit(alloc);
 
         if (self.mods.Super) try parts.append(alloc, "Super");
+        if (self.mods.Ctrl) try parts.append(alloc, "Ctrl");
         if (self.mods.Alt) try parts.append(alloc, "Alt");
         if (self.mods.Shift) try parts.append(alloc, "Shift");
-        if (self.mods.Ctrl) try parts.append(alloc, "Ctrl");
         if (self.mods.None) try parts.append(alloc, "None");
         if (self.mods.Mod3) try parts.append(alloc, "Mod3");
         if (self.mods.Mod5) try parts.append(alloc, "Mod5");
@@ -120,7 +120,7 @@ const Bind = struct {
     mods: Mods,
     key: []const u8,
     description: ?[]const u8,
-    /// How the modifier keys should be displayed.
+    /// How the bind should be displayed for debugging purposes etc.
     fmt: []const u8,
     command: []const u8,
 
@@ -153,8 +153,7 @@ const Bind = struct {
     };
 
     pub inline fn format(self: *Bind, writer: *Writer) Writer.Error!void {
-        try writer.print("{s}", self.fmt);
-        try writer.flush();
+        try writer.print("{s}", .{self.fmt});
     }
 };
 
@@ -277,4 +276,5 @@ test "parseLine" {
         .Ctrl = true,
         .Alt = true,
     }, l.mods);
+    try std.testing.expectEqualStrings("Super+Ctrl+Alt+E (A description.)", l.fmt);
 }
