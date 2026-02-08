@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
 buffer: []const u8,
 index: usize = 0,
@@ -44,9 +45,24 @@ pub const Token = struct {
 
         return null;
     }
+
+    pub fn isModifier(t: Token) bool {
+        return switch (t.tt) {
+            .super, .ctrl, .shift, .alt, .none, .mod3, .mod5 => true,
+            else => false,
+        };
+    }
+
+    pub fn isPlus(t: Token) bool {
+        return t.tt == .plus;
+    }
 };
 
 const State = enum { start, invalid, string_open, wildcard, description };
+
+pub fn source(self: *const Tokeniser, t: *const Token) []const u8 {
+    return self.buffer[t.span.from..t.span.to];
+}
 
 /// We assume the input to be a line which began with riverctl map. This
 /// start has been stripped off, as well as the terminating newline.
@@ -178,6 +194,21 @@ pub fn next(self: *Tokeniser) Token {
             },
         }
     }
+}
+
+/// Caller should free returned slice when finished.
+pub fn collectAllAlloc(self: *Tokeniser, allocator: Allocator) ![]Token {
+    // We anticipate at least 4 tokens for valid inputs.
+    var output = try std.ArrayList(Token).initCapacity(allocator, 4);
+
+    while (true) {
+        const tok = self.next();
+        try output.append(allocator, tok);
+
+        if (tok.tt == .eof) break;
+    }
+
+    return output.toOwnedSlice(allocator);
 }
 
 pub fn init(buffer: []const u8) Tokeniser {
