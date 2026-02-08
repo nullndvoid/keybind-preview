@@ -6,6 +6,8 @@ const Writer = std.Io.Writer;
 
 const Collector = @This();
 const Tokeniser = @import("Tokeniser.zig");
+const Bind = @import("Bind.zig");
+const BindBuilder = @import("BindBuilder.zig");
 
 arena: *Arena,
 /// If no binds are found, perhaps we just print nothing.
@@ -52,126 +54,6 @@ pub fn init(path: []const u8, arena: *Arena) CollectionError!Self {
 
     return collector;
 }
-
-const BindBuilder = struct {
-    mods: Bind.Mods = .{},
-    key: ?[]const u8 = null,
-    description: ?[]const u8 = null,
-    command: ?[]const u8 = null,
-
-    pub fn init() BindBuilder {
-        return .{};
-    }
-
-    pub fn addModifier(self: *BindBuilder, tt: Tokeniser.Token.TokenType) void {
-        switch (tt) {
-            .super => self.mods.Super = true,
-            .alt => self.mods.Alt = true,
-            .ctrl => self.mods.Ctrl = true,
-            .shift => self.mods.Shift = true,
-            .none => self.mods.None = true,
-            .mod3 => self.mods.Mod3 = true,
-            .mod5 => self.mods.Mod5 = true,
-            else => return,
-        }
-    }
-
-    pub fn addKey(self: *BindBuilder, keysym: []const u8) void {
-        self.key = keysym;
-    }
-
-    /// Note this is optional.
-    pub fn addDescription(self: *BindBuilder, desc: []const u8) void {
-        self.description = desc;
-    }
-
-    pub fn addCommand(self: *BindBuilder, cmd: []const u8) void {
-        self.command = cmd;
-    }
-
-    /// Free the allocated Bind with deinit.
-    pub fn build(self: *BindBuilder, alloc: Allocator) CollectionError!Bind {
-        // Maybe I should log a warning or error but this suffices.
-        if (!self.mods.validate() or self.key == null or self.mods.int() == 0) return error.InvalidBind;
-
-        // Build the format string.
-        const fmt = try self.buildFormat(alloc);
-
-        return Bind{
-            .mods = self.mods,
-            .key = self.key.?,
-            .description = self.description,
-            .fmt = fmt,
-            .command = self.command.?,
-        };
-    }
-
-    fn buildFormat(self: *BindBuilder, alloc: Allocator) CollectionError![]const u8 {
-        var parts = std.ArrayList([]const u8).empty;
-        defer parts.deinit(alloc);
-
-        if (self.mods.Super) try parts.append(alloc, "Super");
-        if (self.mods.Ctrl) try parts.append(alloc, "Ctrl");
-        if (self.mods.Alt) try parts.append(alloc, "Alt");
-        if (self.mods.Shift) try parts.append(alloc, "Shift");
-        if (self.mods.Mod3) try parts.append(alloc, "Mod3");
-        if (self.mods.Mod5) try parts.append(alloc, "Mod5");
-
-        try parts.append(alloc, self.key.?);
-
-        const joined = try std.mem.join(alloc, "+", parts.items);
-
-        if (self.description) |desc| {
-            const result = try std.fmt.allocPrint(alloc, "{s} ({s})", .{ joined, desc });
-            alloc.free(joined);
-            return result;
-        }
-
-        return joined;
-    }
-};
-
-/// Initialise with `BindBuilder`. Remember to call `deinit` when done.
-const Bind = struct {
-    mods: Mods,
-    key: []const u8,
-    description: ?[]const u8,
-    /// How the bind should be displayed for debugging purposes etc.
-    fmt: []const u8,
-    command: []const u8,
-
-    pub fn deinit(self: Bind, alloc: Allocator) void {
-        alloc.free(self.fmt);
-    }
-
-    pub const Mods = packed struct(u8) {
-        Super: bool = false,
-        Alt: bool = false,
-        Shift: bool = false,
-        Ctrl: bool = false,
-        None: bool = false,
-        Mod3: bool = false,
-        Mod5: bool = false,
-        _: bool = false,
-
-        const none = (Mods{ .None = true }).int();
-
-        fn int(self: Mods) u8 {
-            return @bitCast(self);
-        }
-
-        pub fn validate(mods: Mods) bool {
-            if (mods.None)
-                return (mods.int() | none) == none;
-
-            return true;
-        }
-    };
-
-    pub inline fn format(self: *const Bind, writer: *Writer) Writer.Error!void {
-        try writer.print("{s}", .{self.fmt});
-    }
-};
 
 /// Warnings can be emitted if a line is not documented with #/##.
 fn parseLine(self: *Collector, line: []const u8) !?Bind {
@@ -246,13 +128,13 @@ fn parseLine(self: *Collector, line: []const u8) !?Bind {
         return error.InvalidBind;
 
     const rest = toks[i + 1 ..];
-    var command_part = std.ArrayList(u8).empty;
+    var command_part = std.ArrayList([]const u8).empty;
     defer command_part.deinit(self.arena.allocator());
 
     var desc_index: ?usize = null;
     for (rest, 0..) |*tok, j| {
         if (tok.tt == .string or tok.tt == .wildcard) {
-            try command_part.appendSlice(self.arena.allocator(), tokeniser.source(tok));
+            try command_part.append(self.arena.allocator(), tokeniser.source(tok));
         } else {
             desc_index = j;
             break;
@@ -269,7 +151,11 @@ fn parseLine(self: *Collector, line: []const u8) !?Bind {
         bind_builder.addDescription(tokeniser.source(&description));
     }
 
-    const command = try command_part.toOwnedSlice(self.arena.allocator());
+    const command = try std.mem.join(
+        self.arena.allocator(),
+        " ",
+        command_part.items,
+    );
     bind_builder.addCommand(command);
 
     return try bind_builder.build(self.arena.allocator());
@@ -313,7 +199,7 @@ test "parseLine with Control modifier" {
     const l = (try collector.parseLine(line)).?;
 
     try std.testing.expectEqualStrings("H", l.key);
-    try std.testing.expectEqualStrings("snapleft", l.command);
+    try std.testing.expectEqualStrings("snap left", l.command);
     try std.testing.expectEqualStrings("Snap window left", l.description.?);
     try std.testing.expectEqual(Bind.Mods{
         .Super = true,
@@ -342,7 +228,7 @@ test "parseLine with map-pointer" {
 }
 
 test "parseLine with indentation and bash variable" {
-    const line = "    riverctl map normal Super 1 set-focused-tags 1 ## Focus tag 1";
+    const line = "    riverctl map normal Super $i set-focused-tags $i ## Focus tag $i";
 
     var arena = Arena.init(std.testing.allocator);
     var collector = Collector{
@@ -352,9 +238,9 @@ test "parseLine with indentation and bash variable" {
 
     const l = (try collector.parseLine(line)).?;
 
-    try std.testing.expectEqualStrings("1", l.key);
-    try std.testing.expectEqualStrings("set-focused-tags1", l.command);
-    try std.testing.expectEqualStrings("Focus tag 1", l.description.?);
+    try std.testing.expectEqualStrings("$i", l.key);
+    try std.testing.expectEqualStrings("set-focused-tags $i", l.command);
+    try std.testing.expectEqualStrings("Focus tag $i", l.description.?);
     try std.testing.expectEqual(Bind.Mods{
         .Super = true,
     }, l.mods);
