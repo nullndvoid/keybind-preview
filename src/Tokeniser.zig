@@ -119,7 +119,9 @@ pub fn next(self: *Tokeniser) Token {
                 '#' => {
                     if (self.index + 1 < self.buffer.len and self.buffer[self.index + 1] == '#') {
                         self.index += 2;
-                        while (self.index < self.buffer.len and (self.buffer[self.index] == ' ' or self.buffer[self.index] == '\t')) {
+                        while (self.index < self.buffer.len and
+                            (self.buffer[self.index] == ' ' or self.buffer[self.index] == '\t'))
+                        {
                             self.index += 1;
                         }
                         res.span.from = self.index;

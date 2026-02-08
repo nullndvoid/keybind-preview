@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Build:** `zig build`
 - **Run:** `zig build run`
 - **Run with args:** `zig build run -- <args>`
-- **Test:** `zig build test`
+- **Test:** `zig build test --summary all`
 
 ## Project Overview
 
