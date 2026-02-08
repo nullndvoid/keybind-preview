@@ -175,14 +175,15 @@ const Bind = struct {
 
 /// Warnings can be emitted if a line is not documented with #/##.
 fn parseLine(self: *Collector, line: []const u8) !?Bind {
+    var trimmed_line = std.mem.trimStart(u8, line, " \t");
+
     // Support both "riverctl map" and "riverctl map-pointer"
     const prefixes = [_][]const u8{ "riverctl map-pointer", "riverctl map" };
 
-    var trimmed_line: []const u8 = undefined;
     var found = false;
     for (prefixes) |prefix| {
-        if (std.mem.startsWith(u8, line, prefix)) {
-            trimmed_line = line[prefix.len..];
+        if (std.mem.startsWith(u8, trimmed_line, prefix)) {
+            trimmed_line = trimmed_line[prefix.len..];
             found = true;
             break;
         }
@@ -335,6 +336,25 @@ test "parseLine with map-pointer" {
     try std.testing.expectEqualStrings("BTN_LEFT", l.key);
     try std.testing.expectEqualStrings("move-view", l.command);
     try std.testing.expectEqualStrings("Move view (pointer)", l.description.?);
+    try std.testing.expectEqual(Bind.Mods{
+        .Super = true,
+    }, l.mods);
+}
+
+test "parseLine with indentation and bash variable" {
+    const line = "    riverctl map normal Super 1 set-focused-tags 1 ## Focus tag 1";
+
+    var arena = Arena.init(std.testing.allocator);
+    var collector = Collector{
+        .arena = &arena,
+    };
+    defer collector.deinit();
+
+    const l = (try collector.parseLine(line)).?;
+
+    try std.testing.expectEqualStrings("1", l.key);
+    try std.testing.expectEqualStrings("set-focused-tags1", l.command);
+    try std.testing.expectEqualStrings("Focus tag 1", l.description.?);
     try std.testing.expectEqual(Bind.Mods{
         .Super = true,
     }, l.mods);
