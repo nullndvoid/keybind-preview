@@ -5,6 +5,11 @@ or a file of your choosing.
 
 Eventually I would like to have a GUI helper where you can search a list of bindings, among other features, see the [TODOs](#todos).
 
+# Dependencies
+
+- wayland-protocols
+- cairo
+
 # TODOs
 
 - GUI helper with cool SVGs for keys? Using `fzf`/similar for text search?
