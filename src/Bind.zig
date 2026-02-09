@@ -1,4 +1,4 @@
-/// Initialise with `BindBuilder`. Remember to call `deinit` when done.
+//! Initialise with `BindBuilder`. Remember to call `deinit` when done.
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
