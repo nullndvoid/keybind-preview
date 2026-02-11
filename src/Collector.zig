@@ -141,22 +141,23 @@ fn parseLine(self: *Collector, line: []const u8) !?Bind {
         }
     }
 
-    // This should be the final token and it should be the description.
-    if (desc_index) |idx| {
-        const description = rest[idx];
-
-        if (description.tt != .description)
-            unreachable;
-
-        bind_builder.addDescription(tokeniser.source(&description));
-    }
-
     const command = try std.mem.join(
         self.arena.allocator(),
         " ",
         command_part.items,
     );
     bind_builder.addCommand(command);
+
+    // This should be the final token and it should be the description.
+    if (desc_index) |idx| {
+        const description = rest[idx];
+
+        if (description.tt != .description) {
+            // Log no description?
+            std.log.info("No description for line: \"{s}\". Using command instead!", .{tokeniser.buffer});
+            bind_builder.addDescription(command);
+        } else bind_builder.addDescription(tokeniser.source(&description));
+    }
 
     return try bind_builder.build(self.arena.allocator());
 }
